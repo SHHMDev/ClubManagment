@@ -16,7 +16,13 @@
     "@capacitor/android": "^8.3.4",
     "@capacitor/cli": "^8.3.4",
     "@capacitor/core": "^8.3.4",
+    "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/share": "^8.0.1",
+    "autotable": "^1.0.0",
+    "html2canvas": "^1.4.1",
     "jeep-sqlite": "^2.8.0",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "sql.js": "^1.14.1"
   }
 }
