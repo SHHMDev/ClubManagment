@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="./src/style.css">
+<title>سیستم مدیریت باشگاه</title>
+</head>
+<body>
+
+<div class="container">
+
+<div class="page-header">
+<div class="title-box">
+<h1 style="color: aliceblue;">🏋️ سیستم مدیریت باشگاه</h1>
+<p>مدیریت شهریه، مربیان و گزارش مالی</p>
+</div>
+
+<div class="top-actions">
+<button class="btn-primary" onclick="openClass()">➕ ثبت کلاس</button>
+<button class="btn-primary" onclick="openMonth()">📅 ماه جدید</button>
+<button class="btn-success" onclick="exportData()">⬇ بکاپ</button>
+<button class="btn-warning" onclick="importData()">⬆ بازیابی</button>
+</div>
+</div>
+
+<div id="months"></div>
+
+</div>
+
+<div class="modal" id="modal">
+<div class="modal-content" id="modalContent"></div>
+</div>
+
+<script>
+
+let classes = JSON.parse(localStorage.getItem("classes") || "[]");
+let monthsData = JSON.parse(localStorage.getItem("months") || "[]");
+normalizeData();
+const SESSION_PRICE = 60000;
+
+function save(){
+localStorage.setItem("classes", JSON.stringify(classes));
+localStorage.setItem("months", JSON.stringify(monthsData));
+render();
+}
+
+function show(html)
+{
+modal.style.display = "flex";
+modalContent.innerHTML = html;
+
+}
+
+function closeModal(){
+modal.style.display = "none";
+modalContent.innerHTML = '';
+}
+
+window.onclick = function(e){
+if(e.target === modal){
+closeModal();
+}
+}
+
+function escapeHtml(str){
+if(!str) return '';
+return str.replace(/[&<>]/g, function(m){
+if(m==='&') return '&amp;';
+if(m==='<') return '&lt;';
+if(m==='>') return '&gt;';
+return m;
+});
+}
+
+/* کلاس */
+
+function openClass(){
+show(`
+<h2 style="margin-bottom:20px;">ثبت کلاس جدید</h2>
+
+استاد:
+<input id="teacher" placeholder="نام مربی">
+
+<br><br>
+
+درصد مربی:
+<input id="percent" type="number" placeholder="مثلاً 50">
+
+<br><br>
+
+<div id="studentsArea"></div>
+
+<button class="btn-primary" onclick="addStudent()">+ افزودن شاگرد</button>
+<button class="btn-success" onclick="saveClass()">✅ ثبت</button>
+<button class="btn-danger" onclick="closeModal()">❌ بستن</button>
+`);
+}
+
+function addStudent(name='', discount=0)
+{
+const container = document.getElementById('studentsArea');
+
+const div = document.createElement('div');
+div.className = 'student-item';
+
+div.innerHTML = `
+<lable>نام شاگرد</lable>
+<input type="text" value="${escapeHtml(name)}" class="sname" placeholder="نام شاگرد">
+<lable>تخفیف</lable>
+<input type="number" value="${discount}" class="sdisc" placeholder="تخفیف">
+<button class="btn-danger" onclick="this.parentElement.remove()">حذف</button>
+`;
+
+container.appendChild(div);
+}
+
+function saveClass()
+{
+
+let teacher = document.getElementById('teacher').value.trim();
+let percent = Number(document.getElementById('percent').value || 0);
+
+if(!teacher){
+alert('نام مربی را وارد کنید');
+return;
+}
+
+let students = [];
+
+let names = document.querySelectorAll('.sname');
+let discs = document.querySelectorAll('.sdisc');
+
+for(let i=0;i<names.length;i++)
+{
+
+if(!names[i].value.trim()) continue;
+
+students.push({
+name:names[i].value.trim(),
+discount:Number(discs[i].value)||0
+});
+
+}
+
+if(students.length===0){
+alert('حداقل یک شاگرد وارد کنید');
+return;
+}
+
+classes.push({
+teacher,
+percent,
+students
+});
+
+save();
+closeModal();
+}
+
+/* ماه */
+
+function openMonth(){
+show(`
+<h2 style="margin-bottom:20px;">ایجاد ماه</h2>
+
+نام ماه:
+<input id="mname" placeholder="مثلاً فروردین 1405">
+
+<br><br>
+
+شهریه پایه:
+<input id="mfee" type="number" placeholder="مبلغ شهریه">
+
+<br><br>
+
+<button class="btn-success" onclick="createMonth()">✅ ایجاد</button>
+<button class="btn-danger" onclick="closeModal()">❌ بستن</button>
+`);
+}
+
+function createMonth()
+{
+let monthName = document.getElementById('mname').value.trim();
+let monthFee = Number(document.getElementById('mfee').value || 0);
+
+if(!monthName || monthFee<=0){
+alert('اطلاعات ناقص است');
+return;
+}
+
+let copy = JSON.parse(JSON.stringify(classes));
+
+copy.forEach(c=>{
+c.students.forEach(s=>{
+s.paid = false;
+});
+});
+
+monthsData.push({
+name:monthName,
+fee:monthFee,
+classes:copy
+});
+
+save();
+closeModal();
+}
+
+/* رندر */
+
+function render(){
+
+let container = document.getElementById('months');
+container.innerHTML = '';
+
+if(monthsData.length===0){
+container.innerHTML = `
+<div class="card">
+هیچ ماهی ثبت نشده است.
+</div>`;
+}
+
+monthsData.forEach((m,i)=>{
+
+container.innerHTML += `
+<div class="card">
+
+<div class="month-top">
+<div>
+<div class="month-title">📆 ${escapeHtml(m.name)}</div>
+<div class="month-fee">شهریه پایه: ${m.fee.toLocaleString()} تومان</div>
+</div>
+
+<div class="action-group">
+<button class="btn-primary" onclick="openMonthView(${i})">🔍 مشاهده</button>
+<button class="btn-danger" onclick="deleteMonth(${i})">🗑 حذف</button>
+</div>
+
+</div>
+
+</div>
+`;
+
+});
+
+if(classes.length>0)
+{
+
+container.innerHTML += `<div class="card">
+<h2>🏫 کلاس‌ها</h2>`;
+
+classes.forEach(c=>{
+
+container.innerHTML += `
+<div class="class-box">
+<b>${escapeHtml(c.teacher)}</b>
+<div style="margin-top:5px;color:#64748b;">
+درصد مربی: %${c.percent}
+</div>
+
+<button class="btn-danger" onclick="deleteClass(${classes.indexOf(c)})">
+  حذف کلاس
+</button>
+<button class="btn-warning" onclick="editClass(${classes.indexOf(c)})">
+  ویرایش
+</button>
+
+</div>`;
+
+});
+
+container.innerHTML += `</div>`;
+}
+
+}
+
+function deleteMonth(index){
+if(confirm('حذف شود؟')){
+monthsData.splice(index,1);
+save();
+}
+}
+
+/* مشاهده ماه */
+
+
+function normalizeData(){
+  classes.forEach(c=>{
+    c.students.forEach(s=>{
+      if(!s.paymentType) s.paymentType = 'monthly';
+      if(!s.sessionCount) s.sessionCount = 1;
+      if(typeof s.paid !== 'boolean') s.paid = false;
+      if(typeof s.discount !== 'number') s.discount = 0;
+    });
+  });
+}
+
+function openMonthView(i) {
+    let m = monthsData[i];
+    
+    // State برای باز/بسته بودن هر معلم
+    if (!window.teachersState) window.teachersState = {};
+    if (!window.teachersState[i]) window.teachersState[i] = {};
+
+    let html = `
+    <style>
+        .teacher-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 16px;
+            border-radius: 14px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 12px;
+            transition: all 0.3s ease;
+            user-select: none;
+        }
+        
+        .teacher-header:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102,126,234,0.4);
+        }
+        
+        .teacher-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+            padding: 0 12px;
+        }
+        
+        .teacher-content.open {
+            max-height: 5000px;
+            transition: max-height 0.5s ease-in;
+            padding: 12px;
+        }
+        
+    </style>
+    
+    <h2 style="margin-bottom:20px;">📆 ${m.name}</h2>
+    
+    <div style="background:#eef2ff; padding:14px; border-radius:14px; margin-bottom:20px;">
+        💰 هر جلسه: ${SESSION_PRICE.toLocaleString()} تومان
+    </div>
+    
+    <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+        <button class="btn-success" onclick="openReportPreview(${i})">📄 مشاهده گزارش</button>
+        <button class="btn-danger" onclick="closeModal()">❌ بستن</button>
+    </div>
+    `;
+
+    m.classes.forEach((c, ci) => {
+        let isOpen = window.teachersState[i][ci] || false;
+        
+        html += `
+        <div class="teacher-wrapper" data-month="${i}" data-class="${ci}">
+            <div class="teacher-header" onclick="toggleTeacherContent(${i}, ${ci})">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 24px;">👨‍🏫</span>
+                    <span>${c.teacher}</span>
+                    <span style="font-size: 14px; opacity: 0.8; margin-right: auto;">
+                        📊 ${c.students.length} دانش‌آموز
+                    </span>
+                </div>
+            </div>
+            
+            <div class="teacher-content ${isOpen ? 'open' : ''}" id="content_${i}_${ci}">
+        `;
+
+        c.students.forEach((s, si) => {
+            let monthlyAmount = m.fee - (s.discount || 0);
+            if (monthlyAmount < 0) monthlyAmount = 0;
+
+            let sessionAmount = (s.sessionCount * SESSION_PRICE) - (s.discount || 0);
+            if (sessionAmount < 0) sessionAmount = 0;
+
+            let expected = s.paymentType === 'monthly' ? monthlyAmount : sessionAmount;
+
+            html += `
+            <div style="
+                background:white;
+                padding:16px;
+                border-radius:18px;
+                margin-bottom:16px;
+                border:1px solid #e5e7eb;
+            ">
+                <div style="font-weight:bold; font-size:16px; margin-bottom:12px;">
+                    ${s.name}
+                </div>
+                
+                <div style="margin-bottom:10px; color:#64748b;">
+                    تخفیف: ${(s.discount || 0).toLocaleString()} تومان
+                </div>
+                
+                <div style="background:#f8fafc; padding:12px; border-radius:12px; margin-bottom:14px;">
+                    <label style="display:block; margin-bottom:10px;">
+                        <input type="radio" name="type_${i}_${ci}_${si}" value="monthly"
+                            ${s.paymentType === 'monthly' ? 'checked' : ''}
+                            onchange="changePaymentType(${i},${ci},${si},'monthly')">
+                        📅 ماهانه (${monthlyAmount.toLocaleString()} تومان)
+                    </label>
+                    
+                    <label>
+                        <input type="radio" name="type_${i}_${ci}_${si}" value="session"
+                            ${s.paymentType === 'session' ? 'checked' : ''}
+                            onchange="changePaymentType(${i},${ci},${si},'session')">
+                        🔢 جلسه‌ای
+                    </label>
+                </div>
+                
+                <div id="sessionDiv_${i}_${ci}_${si}" style="display: ${s.paymentType === 'session' ? 'block' : 'none'};
+                    background:#ecfeff; padding:12px; border-radius:12px; margin-bottom:14px;">
+                    تعداد جلسات:
+                    <input type="number" min="1" value="${s.sessionCount}"
+                        style="margin-top:10px;"
+                        onchange="updateSessionCount(${i},${ci},${si},this.value)">
+                    <div style="margin-top:10px; font-weight:bold; color:#0f766e;">
+                        مبلغ نهایی: ${sessionAmount.toLocaleString()} تومان
+                    </div>
+                </div>
+                
+                <div style="background:#f8fafc; padding:12px; border-radius:12px; margin-bottom:14px;">
+                    💵 مبلغ قابل پرداخت: <strong>${expected.toLocaleString()} تومان</strong>
+                </div>
+                
+                <label style="font-weight:bold;">
+                    <input type="checkbox" ${s.paid ? 'checked' : ''}
+                        onchange="togglePaid(${i},${ci},${si})">
+                    ✅ پرداخت شده
+                </label>
+            </div>
+            `;
+        });
+
+        html += `
+            </div>
+        </div>
+        `;
+    });
+
+    show(html);
+}
+
+// تابع باز و بسته کردن محتوا
+function toggleTeacherContent(monthIndex, classIndex) {
+    if (!window.teachersState[monthIndex]) {
+        window.teachersState[monthIndex] = {};
+    }
+    
+    // تغییر وضعیت
+    window.teachersState[monthIndex][classIndex] = !window.teachersState[monthIndex][classIndex];
+    
+    // پیدا کردن المان محتوا
+    let content = document.getElementById(`content_${monthIndex}_${classIndex}`);
+    
+    if (content) {
+        if (window.teachersState[monthIndex][classIndex]) {
+            content.classList.add('open');
+        } else {
+            content.classList.remove('open');
+        }
+    }
+}
+
+function togglePaid(i,ci,si)
+{
+
+monthsData[i].classes[ci].students[si].paid =
+!monthsData[i].classes[ci].students[si].paid;
+
+save();
+openMonthView(i);
+}
+
+function deleteClass(i){
+  if(confirm("کلاس حذف شود؟")){
+    classes.splice(i,1);
+    save();
+  }
+}
+
+function editClass(i){
+  let c = classes[i];
+
+  show(`
+    <h2>ویرایش کلاس</h2>
+
+    استاد:
+    <input id="teacher" value="${c.teacher}">
+
+    <br><br>
+
+    درصد مربی:
+    <input id="percent" type="number" value="${c.percent}">
+
+    <br><br>
+
+    <div id="studentsArea"></div>
+
+    <button class="btn-primary" onclick="addStudent()">افزودن شاگرد</button>
+    <button class="btn-success" onclick="saveEditClass(${i})">ذخیره</button>
+  `);
+
+  c.students.forEach(s=>{
+    addStudent(s.name, s.discount);
+  });
+}
+
+function saveEditClass(i){
+  let teacher = document.getElementById('teacher').value.trim();
+  let percent = Number(document.getElementById('percent').value || 0);
+
+  let students = [];
+
+  document.querySelectorAll('.student-item').forEach(item=>{
+    let name = item.querySelector('.sname').value.trim();
+    let discount = Number(item.querySelector('.sdisc').value || 0);
+
+    if(name){
+      students.push({
+        name,
+        discount,
+        paid:false,
+        paymentType:'monthly',
+        sessionCount:1
+      });
+    }
+  });
+
+  classes[i] = {
+    teacher,
+    percent,
+    students
+  };
+
+  save();
+  closeModal();
+}
+
+function changePaymentType(
+monthIndex,
+classIndex,
+studentIndex,
+type
+)
+{
+
+let student =
+monthsData[monthIndex]
+.classes[classIndex]
+.students[studentIndex];
+
+student.paymentType = type;
+
+save();
+
+openMonthView(monthIndex);
+
+}
+
+function updateSessionCount(
+monthIndex,
+classIndex,
+studentIndex,
+count
+){
+let student =
+monthsData[monthIndex]
+.classes[classIndex]
+.students[studentIndex];
+
+student.sessionCount =
+parseInt(count) || 1;
+
+save();
+
+openMonthView(monthIndex);
+
+}
+
+
+function printReport(){
+  let iframe = document.getElementById("reportFrame");
+  iframe.contentWindow.print();
+}
+
+function openReportPreview(i){
+
+let html = `
+<div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:15px;">
+  <button class="btn-success" onclick="printReport()">🖨 پرینت / PDF</button>
+  <button class="btn-danger" onclick="closeModal()">❌ بستن</button>
+</div>
+
+<iframe id="reportFrame"
+style="width:100%;height:80vh;border:none;border-radius:12px;"></iframe>
+`;
+
+show(html);
+
+setTimeout(()=>{
+  let iframe = document.getElementById("reportFrame");
+  iframe.contentDocument.open();
+  iframe.contentDocument.write(buildMonthReportHTML(i));
+  iframe.contentDocument.close();
+},50);
+}
+
+function buildMonthReportHTML(i) {
+    let m = monthsData[i];
+    if (!m) return '';
+
+    let html = `
+    <div style="
+        direction: rtl;
+        padding: 20px;
+        background: white;
+        color: #111;
+        max-width: 100%;
+    ">
+
+    <h1 style="
+        text-align: center;
+        background: linear-gradient(135deg,#4f46e5,#6366f1);
+        color: white;
+        padding: 16px;
+        border-radius: 14px;
+        margin-bottom: 30px;
+        font-size:15px;
+    ">
+    📋 گزارش مالی ماه ${m.name}
+    </h1>
+    `;
+
+    let grandTotal = 0;
+    let grandCoach = 0;
+    let grandClub = 0;
+
+    m.classes.forEach((c, classIndex) => {
+        let total = 0;
+        let discounts = 0;
+
+        html += `
+        <div style="
+            page-break-after: always;
+            margin-bottom: 40px;
+        ">
+
+        <h2 style="
+    background: linear-gradient(135deg,#0f172a,#1e293b);
+    color: white;
+    padding: 14px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    font-size:12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+">
+    <span>👨‍🏫 کلاس ${c.teacher} (%${c.percent} سهم مربی)</span>
+    <span 
+        onclick="window.parent.printTeacherReport(${i}, ${classIndex})" 
+        style="
+            background: #10b981;
+            color: white;
+            font-size: 11px;
+            padding: 5px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            user-select: none;
+        "
+        onmouseover="this.style.background='#059669'"
+        onmouseout="this.style.background='#10b981'"
+    >
+        🖨️ چاپ کردن
+    </span>
+</h2>
+
+        <div style="
+            overflow-x: auto;
+            overflow-y: visible;
+            border-radius: 14px;
+            box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1);
+        ">
+        
+        <table style="
+            width: 100%;
+            min-width: 600px;
+            font-size: 10px;
+            border-collapse: collapse;
+            border-radius: 14px;
+        ">
+        
+        <thead>
+            <tr style="background:#eef2ff; color:#312e81;">
+                <th style="padding:4px; border:1px solid #ddd; white-space: nowrap;">نام شاگرد</th>
+                <th style="padding:4px; border:1px solid #ddd; white-space: nowrap;">نوع پرداخت</th>
+                <th style="padding:4px; border:1px solid #ddd; white-space: nowrap;">تعداد جلسات</th>
+                <th style="padding:4px; border:1px solid #ddd; white-space: nowrap;">مبلغ پایه</th>
+                <th style="padding:4px; border:1px solid #ddd; white-space: nowrap;">تخفیف</th>
+                <th style="padding:4px; border:1px solid #ddd; white-space: nowrap;">مبلغ نهایی</th>
+                <th style="padding:4px; border:1px solid #ddd; white-space: nowrap;">وضعیت</th>
+            </tr>
+        </thead>
+        
+        <tbody>
+        `;
+
+        c.students.forEach((s, index) => {
+            let baseAmount = 0;
+            let typeText = '';
+
+            if (s.paymentType === 'monthly') {
+                baseAmount = m.fee;
+                typeText = 'ماهانه';
+            } else {
+                let sessionCount = s.sessionCount || 1;
+                baseAmount = sessionCount * SESSION_PRICE;
+                typeText = `جلسه‌ای (${sessionCount} جلسه)`;
+            }
+
+            let discount = s.discount || 0;
+            discounts += discount;
+            let expected = baseAmount - discount;
+            if (expected < 0) expected = 0;
+            let paid = s.paid ? expected : 0;
+            total += paid;
+
+            html += `
+            <tr style="background:${index % 2 === 0 ? '#fff' : '#f8fafc'};">
+                <td style="padding:6px; border:1px solid #e5e7eb; white-space: nowrap;">${s.name}</td>
+                <td style="padding:6px; border:1px solid #e5e7eb; white-space: nowrap;">${typeText}</td>
+                <td style="padding:6px; border:1px solid #e5e7eb; white-space: nowrap;">
+                    ${s.paymentType === 'session' ? (s.sessionCount || 1) : '-'}
+                </td>
+                <td style="padding:6px; border:1px solid #e5e7eb; white-space: nowrap;">
+                    ${baseAmount.toLocaleString()}
+                </td>
+                <td style="padding:6px; border:1px solid #e5e7eb; color:#dc2626; white-space: nowrap;">
+                    ${discount.toLocaleString()}
+                </td>
+                <td style="padding:6px; border:1px solid #e5e7eb; font-weight:bold; color:#059669; white-space: nowrap;">
+                    ${expected.toLocaleString()}
+                </td>
+                <td style="padding:6px; border:1px solid #e5e7eb; font-weight:bold; color:${s.paid ? '#16a34a' : '#dc2626'}; white-space: nowrap;">
+                    ${s.paid ? '✓ پرداخت شده' : '✗ پرداخت نشده'}
+                </td>
+            </tr>
+            `;
+        });
+
+        let coach = total * (c.percent / 100);
+        let club = total - coach;
+        coach += ((discounts * c.percent) / 100);
+        club -= ((discounts * c.percent) / 100);
+
+        grandTotal += total;
+        grandCoach += coach;
+        grandClub += club;
+
+        html += `
+        </tbody>
+        
+        <tfoot>
+            <tr style="background:#f1f5f9;">
+                <th colspan="5" style="padding:10px; border:1px solid #ddd; white-space: nowrap;">
+                    کل دریافتی: ${total.toLocaleString()} تومان
+                </th>
+                <th colspan="2" style="padding:10px; border:1px solid #ddd; white-space: nowrap;">
+                   مبلغ پرداختی بدون محاسبه تخفیف ${(total + discounts).toLocaleString()}
+                </th>
+            </tr>
+            
+            <tr>
+                <td colspan="7" style="
+                    padding: 8px;
+                    border: 1px solid #ddd;
+                    background: #ecfeff;
+                    font-weight: bold;
+                    font-size: 10px;
+                ">
+                    💰 سهم مربی: ${coach.toLocaleString()} تومان
+                    <br><br>
+                    🏢 سهم باشگاه: ${club.toLocaleString()} تومان
+                </td>
+            </tr>
+        </tfoot>
+        
+        </table>
+        
+        </div>
+        
+        </div>
+        `;
+    });
+
+    // ادامه کد قبلی برای جمع کل...
+    html += `
+    <div style="
+        page-break-before: always;
+        padding-top: 30px;
+    ">
+
+    <h2 style="
+        background: linear-gradient(135deg,#4f46e5,#6366f1);
+        color: white;
+        padding: 16px;
+        border-radius: 14px;
+        text-align: center;
+        margin-bottom: 25px;
+        font-size:15px;
+    ">
+    📊 جمع کل باشگاه
+    </h2>
+
+    <div style="overflow-x: auto; border-radius: 14px;">
+    
+    <table style="
+        width: 100%;
+        min-width: 400px;
+        border-collapse: collapse;
+        font-size: 12px;
+    ">
+    
+    <thead>
+        <tr style="background:#312e81; color:white;">
+            <th style="padding:16px; border:1px solid #ddd; white-space: nowrap;">کل دریافتی</th>
+            <th style="padding:16px; border:1px solid #ddd; white-space: nowrap;">سهم مربیان</th>
+            <th style="padding:16px; border:1px solid #ddd; white-space: nowrap;">سهم باشگاه</th>
+        </tr>
+    </thead>
+    
+    <tbody>
+        <tr style="background:#f8fafc; font-weight:bold;">
+            <td style="padding:18px; border:1px solid #ddd; white-space: nowrap;">
+                ${grandTotal.toLocaleString()} تومان
+            </td>
+            <td style="padding:18px; border:1px solid #ddd; color:#2563eb; white-space: nowrap;">
+                ${grandCoach.toLocaleString()} تومان
+            </td>
+            <td style="padding:18px; border:1px solid #ddd; color:#059669; white-space: nowrap;">
+                ${grandClub.toLocaleString()} تومان
+            </td>
+        </tr>
+    </tbody>
+    
+    </table>
+    
+    </div>
+
+    </div>
+
+    </div>
+    `;
+
+    return html;
+}
+
+function printTeacherReport(monthIndex, classIndex) {
+    let m = monthsData[monthIndex];
+    let c = m.classes[classIndex];
+    
+    if (!c) return;
+    
+    let total = 0;
+    let discounts = 0;
+    
+    // محاسبات جدول
+    c.students.forEach(s => {
+        let baseAmount = 0;
+        if (s.paymentType === 'monthly') {
+            baseAmount = m.fee;
+        } else {
+            let sessionCount = s.sessionCount || 1;
+            baseAmount = sessionCount * SESSION_PRICE;
+        }
+        
+        let discount = s.discount || 0;
+        discounts += discount;
+        let expected = baseAmount - discount;
+        if (expected < 0) expected = 0;
+        total += (s.paid ? expected : 0);
+    });
+    
+    let coach = total * (c.percent / 100);
+    let club = total - coach;
+    coach += ((discounts * c.percent) / 100);
+    club -= ((discounts * c.percent) / 100);
+    
+    // ساخت ردیف‌های جدول
+    let rows = '';
+    c.students.forEach((s, index) => {
+        let baseAmount = 0;
+        let typeText = '';
+        
+        if (s.paymentType === 'monthly') {
+            baseAmount = m.fee;
+            typeText = 'ماهانه';
+        } else {
+            let sessionCount = s.sessionCount || 1;
+            baseAmount = sessionCount * SESSION_PRICE;
+            typeText = 'جلسه‌ای (' + sessionCount + ' جلسه)';
+        }
+        
+        let discount = s.discount || 0;
+        let expected = baseAmount - discount;
+        if (expected < 0) expected = 0;
+        
+        rows += '<tr>' +
+            '<td style="padding:8px; border:1px solid #ddd;">' + s.name + '</td>' +
+            '<td style="padding:8px; border:1px solid #ddd;">' + typeText + '</td>' +
+            '<td style="padding:8px; border:1px solid #ddd;">' + (s.paymentType === 'session' ? (s.sessionCount || 1) : '-') + '</td>' +
+            '<td style="padding:8px; border:1px solid #ddd;">' + baseAmount.toLocaleString() + '</td>' +
+            '<td style="padding:8px; border:1px solid #ddd;">' + discount.toLocaleString() + '</td>' +
+            '<td style="padding:8px; border:1px solid #ddd; font-weight:bold;">' + expected.toLocaleString() + '</td>' +
+            '<td style="padding:8px; border:1px solid #ddd; color:' + (s.paid ? 'green' : 'red') + ';">' + (s.paid ? '✓ پرداخت شده' : '✗ پرداخت نشده') + '</td>' +
+        '</tr>';
+    });
+    
+    // ساخت HTML کامل برای پرینت
+    let printHtml = `
+    <!DOCTYPE html>
+    <html dir="rtl">
+    <head>
+        <meta charset="UTF-8">
+        <title>گزارش ${c.teacher}</title>
+        <style>
+            body {
+                font-family: Tahoma, 'Segoe UI', sans-serif;
+                direction: rtl;
+                padding: 20px;
+                margin: 0;
+            }
+            
+            h1 {
+                text-align: center;
+                background: linear-gradient(135deg,#4f46e5,#6366f1);
+                color: white;
+                padding: 16px;
+                border-radius: 14px;
+                margin-bottom: 30px;
+                font-size: 18px;
+            }
+            
+            h2 {
+                background: linear-gradient(135deg,#0f172a,#1e293b);
+                color: white;
+                padding: 14px;
+                border-radius: 12px;
+                margin-bottom: 20px;
+                font-size: 14px;
+            }
+            
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 20px;
+                font-size: 12px;
+            }
+            
+            th {
+                background: #eef2ff;
+                color: #312e81;
+                padding: 10px;
+                border: 1px solid #ddd;
+            }
+            
+            td {
+                padding: 8px;
+                border: 1px solid #ddd;
+            }
+            
+            .summary-box {
+                background: #ecfeff;
+                padding: 15px;
+                border-radius: 12px;
+                margin-top: 20px;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            
+            .footer {
+                margin-top: 30px;
+                text-align: center;
+                font-size: 10px;
+                color: #64748b;
+            }
+            
+            @media print {
+                body {
+                    margin: 0;
+                    padding: 0;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <h1>📋 گزارش مالی - ${c.teacher}</h1>
+        <h2>📆 ماه ${m.name}</h2>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>نام شاگرد</th>
+                    <th>نوع پرداخت</th>
+                    <th>تعداد جلسات</th>
+                    <th>مبلغ پایه</th>
+                    <th>تخفیف</th>
+                    <th>مبلغ نهایی</th>
+                    <th>وضعیت</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rows}
+            </tbody>
+            <tfoot>
+                <tr style="background:#f1f5f9; font-weight:bold;">
+                    <td colspan="5">کل دریافتی: ${total.toLocaleString()} تومان</td>
+                    <td colspan="2">بدون تخفیف: ${(total + discounts).toLocaleString()} تومان</td>
+                </tr>
+            </tfoot>
+        </table>
+        
+        <div class="summary-box">
+            💰 سهم مربی (${c.percent}%): ${coach.toLocaleString()} تومان<br><br>
+            🏢 سهم باشگاه: ${club.toLocaleString()} تومان
+        </div>
+        
+        <div class="footer">
+            تاریخ چاپ: ${new Date().toLocaleDateString('fa-IR')}
+        </div>
+    </body>
+    </html>
+    `;
+    
+    // روش پرینت مستقیم با iframe مخفی
+    let iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+    
+    let iframeDoc = iframe.contentWindow.document;
+    iframeDoc.open();
+    iframeDoc.write(printHtml);
+    iframeDoc.close();
+    
+    // کمی صبر کن تا محتوا لود بشه بعد پرینت بگیر
+    setTimeout(() => {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        
+        // بعد از پرینت، iframe رو حذف کن
+        setTimeout(() => {
+            document.body.removeChild(iframe);
+        }, 1000);
+    }, 100);
+}
+
+
+/* Export با textarea */
+
+function exportData(){
+
+let data = JSON.stringify({classes,monthsData},null,2);
+
+show(`
+<h2 style="margin-bottom:20px;">بکاپ اطلاعات</h2>
+
+<p style="margin-bottom:15px;">
+متن زیر را کپی و ذخیره کن.
+</p>
+
+<textarea id="backupText">${data}</textarea>
+
+<br><br>
+
+<button class="btn-success" onclick="copyBackup()">
+📋 کپی
+</button>
+
+<button class="btn-danger" onclick="closeModal()">
+❌ بستن
+</button>
+`);
+}
+
+function copyBackup(){
+
+let text = document.getElementById('backupText');
+text.select();
+document.execCommand('copy');
+
+alert('کپی شد');
+}
+
+/* Import با textarea */
+
+function importData(){
+
+show(`
+<h2 style="margin-bottom:20px;">بازیابی اطلاعات</h2>
+
+<p style="margin-bottom:15px;">
+متن بکاپ را اینجا Paste کن.
+</p>
+
+<textarea id="importText"></textarea>
+
+<br><br>
+
+<button class="btn-success" onclick="doImport()">
+⬆ بازیابی
+</button>
+
+<button class="btn-danger" onclick="closeModal()">
+❌ بستن
+</button>
+`);
+}
+
+function doImport(){
+
+try{
+
+let data = JSON.parse(
+document.getElementById('importText').value
+);
+
+if(data.classes) classes = data.classes;
+if(data.monthsData) monthsData = data.monthsData;
+
+save();
+closeModal();
+
+alert('اطلاعات بازیابی شد');
+
+}catch(err){
+alert('بکاپ نامعتبر است');
+}
+}
+
+render();
+
+</script>
+</body>
+</html>
